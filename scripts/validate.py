@@ -5,10 +5,14 @@ Checks performed:
   1. SKILL.md frontmatter: delimiters, kebab-case name, description, whenToUse
   2. Required files exist
   3. Workflow template guardrails (permissions, version guard, --verify-tag, ...)
+     including complete parameterization of the published asset path
   4. Shell syntax of every `run:` block in bundled YAML files (`bash -n`)
   5. The macOS bash 3.2 pitfall: `$var` immediately followed by a non-ASCII byte
   6. Relative Markdown links in SKILL.md / README*.md / references/*.md resolve
-  7. README files mention the skill name and the template path
+  7. Both READMEs mention the skill name, template path, install path and license
+
+The release publish branches (create / re-upload / draft repair) are exercised
+separately by `scripts/mock-release-branches.py`; CI runs both.
 
 Stdlib only (Python 3.8+), no network access. Exit code 0 = all checks passed.
 
@@ -36,10 +40,12 @@ REQUIRED_FILES = [
     "README.md",
     "README.zh.md",
     "LICENSE",
+    ".gitattributes",
     "assets/workflow-macos-package.yml",
     "references/checklist.md",
     "references/stacks.md",
     "references/environment-facts.md",
+    "scripts/mock-release-branches.py",
     ".github/workflows/ci.yml",
 ]
 
@@ -60,6 +66,8 @@ TEMPLATE_GUARDRAILS = [
     "--verify-tag",
     "--clobber",
     "ADAPT",
+    "release/${{ env.ASSET_NAME }}",
+    'release/$ASSET_NAME',
 ]
 
 YAML_FILES = [
@@ -135,7 +143,10 @@ def check_skill_frontmatter(root: Path) -> None:
     elif len(description) < 20:
         fail(f"frontmatter: `description` is too short ({len(description)} chars)")
     elif len(description) > 1024:
-        fail(f"frontmatter: `description` is too long ({len(description)} chars, catalog cap)")
+        fail(
+            f"frontmatter: `description` is {len(description)} chars; convention is to keep "
+            "it concise for the skill catalog (this is not a hard DSH limit)"
+        )
     else:
         ok(f"frontmatter description: {len(description)} chars")
 
@@ -153,10 +164,10 @@ def check_required_files(root: Path) -> None:
         ok(f"required files present ({len(REQUIRED_FILES)})")
 
 
-def check_template(root: Path) -> tuple[str, str] | None:
+def check_template(root: Path) -> None:
     template_path = root / "assets/workflow-macos-package.yml"
     if not template_path.is_file():
-        return None
+        return
     text = template_path.read_text(encoding="utf-8")
     missing = [marker for marker in TEMPLATE_GUARDRAILS if marker not in text]
     if missing:
@@ -168,7 +179,13 @@ def check_template(root: Path) -> tuple[str, str] | None:
         fail(f"workflow template has only {adapt_count} ADAPT markers; expected >= 5")
     else:
         ok(f"workflow template ADAPT markers: {adapt_count}")
-    return template_path.read_text(encoding="utf-8"), str(template_path)
+
+    literal = "release/app-mac-arm64.zip"
+    if literal in text:
+        fail(
+            "workflow template hardcodes " + repr(literal)
+            + "; use release/${{ env.ASSET_NAME }} in YAML and \"release/$ASSET_NAME\" in shell"
+        )
 
 
 def extract_run_scripts(text: str) -> list[tuple[int, str]]:
@@ -302,15 +319,16 @@ def check_markdown_links(root: Path) -> None:
 
 
 def check_readme_content(root: Path) -> None:
+    markers = (
+        ("github-actions-macos-release", "skill name"),
+        ("assets/workflow-macos-package.yml", "template path"),
+        ("~/.dsh/skills", "DSH install path"),
+    )
+
     readme = root / "README.md"
-    readme_zh = root / "README.zh.md"
     if readme.is_file():
         text = readme.read_text(encoding="utf-8")
-        for marker, label in (
-            ("github-actions-macos-release", "skill name"),
-            ("assets/workflow-macos-package.yml", "template path"),
-            ("~/.dsh/skills", "DSH install path"),
-        ):
+        for marker, label in markers:
             if marker not in text:
                 fail(f"README.md does not mention the {label}")
         if "MIT" not in text:
@@ -318,8 +336,23 @@ def check_readme_content(root: Path) -> None:
         if not any(marker in text.lower() for marker in ("## install", "## usage", "## quick start")):
             fail("README.md has no install/usage section heading")
         ok("README.md content markers")
-    if readme_zh.is_file() and not readme_zh.read_text(encoding="utf-8").strip():
-        fail("README.zh.md is empty")
+
+    readme_zh = root / "README.zh.md"
+    if readme_zh.is_file():
+        text = readme_zh.read_text(encoding="utf-8")
+        if not text.strip():
+            fail("README.zh.md is empty")
+        else:
+            for marker, label in markers:
+                if marker not in text:
+                    fail(f"README.zh.md does not mention the {label}")
+            if "MIT" not in text:
+                fail("README.zh.md does not mention the license")
+            if not any(
+                heading in text for heading in ("## 安装", "## 作为 DSH skill 安装", "## 使用")
+            ):
+                fail("README.zh.md has no install/usage section heading")
+            ok("README.zh.md content markers")
 
 
 def main() -> int:

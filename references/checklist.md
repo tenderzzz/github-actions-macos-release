@@ -3,9 +3,9 @@
 ## Before the first run
 
 - [ ] `python3 scripts/validate.py` and `actionlint -shellcheck "$(command -v shellcheck)" assets/workflow-macos-package.yml` are clean.
-- [ ] Every `ADAPT` marker in the template is resolved (package dir, zip names, Node version, test/package commands).
-- [ ] Clean-tree simulation passes: `git archive HEAD | tar -x -C /tmp/ci-run`, then the same `npm ci && npm test && npm run package` with the workflow's Node major.
-- [ ] Mock `gh` run covers the three publish branches: create / existing published / leftover draft.
+- [ ] Every `ADAPT` marker in the template is resolved (package dir, `RAW_NAME`/`ASSET_NAME`, Node version, test/package commands, artifact name, release title, notes locale).
+- [ ] Clean-tree simulation passes: `rm -rf /tmp/ci-run && mkdir -p /tmp/ci-run && git archive HEAD | tar -x -C /tmp/ci-run`, then the same `npm ci && npm test && npm run package` with the workflow's Node major.
+- [ ] `python3 scripts/mock-release-branches.py` passes (create / existing published / leftover draft branches).
 - [ ] README release commands agree with the version guard (`tag == v${package.json.version}`).
 - [ ] Repo default token is read-only? Workflow declares `permissions: contents: write` (no repo setting change needed).
 - [ ] Existing release asset names are not silently changed (README download links must keep working).
@@ -19,7 +19,7 @@ gh run watch <run-id>
 gh run view <run-id> --json jobs --jq '.jobs[].steps[] | "\(.number) \(.name): \(.conclusion)"'
 ```
 
-- [ ] `Verify tag`, `Generate release notes`, `Publish GitHub Release` are `skipped`.
+- [ ] `Verify tag matches package.json version`, `Generate release notes`, `Publish GitHub Release` are `skipped`.
 - [ ] `Upload build artifact` succeeded; artifact size is plausible (Electron apps are usually 80–150 MB).
 - [ ] Job summary contains the asset size and SHA-256.
 - [ ] Existing releases untouched (asset digests unchanged).

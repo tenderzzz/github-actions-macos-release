@@ -13,8 +13,11 @@ done
 # macOS runner labels -> image / architecture
 gh api repos/actions/runner-images/contents/README.md --jq '.content' | base64 -d | grep -E 'macos-(latest|2[0-9])'
 
-# Node LTS availability and setup-node features
+# setup-node features (e.g. node-version-file support)
 gh api repos/actions/setup-node/contents/README.md --jq '.content' | base64 -d | grep -i 'node-version-file' | head -3
+
+# Node release schedule (is the target major still supported?)
+curl -fsSL https://raw.githubusercontent.com/nodejs/release/main/schedule.json | python3 -c "import json,sys; d=json.load(sys.stdin); print('\n'.join(f\"{k}: phase={v.get('phase')} lts={v.get('lts')} eol={v.get('end')}\" for k,v in d.items()))"
 
 # Packaging toolchain versions
 npm view electron version 2>/dev/null

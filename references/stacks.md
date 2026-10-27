@@ -36,5 +36,5 @@ The bundled template is written for the simple case: an npm project whose `npm r
 ## Architecture matrix
 
 - Template default: single arm64 package (Apple Silicon only, matching most personal projects).
-- For Intel + Apple Silicon: use a matrix over `macos-26` (arm64) and `macos-26-intel`/`macos-15` (x64) with architecture-specific asset names (`app-mac-arm64.zip`, `app-mac-x64.zip`), or produce one universal build (`--universal`).
+- For Intel + Apple Silicon: use a matrix over `macos-26` (arm64) and `macos-26-intel` (x64) — or `macos-15-intel`, since plain `macos-15` is arm64 — with architecture-specific asset names (`app-mac-arm64.zip`, `app-mac-x64.zip`), or produce one universal build (`--universal`).
 - Release jobs in a matrix must upload distinct asset names; two jobs must not write the same file concurrently. Either publish from one job after downloading both artifacts, or use separate tags/releases.

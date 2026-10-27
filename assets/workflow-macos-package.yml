@@ -6,8 +6,11 @@
 # Assumptions (check before use):
 #   - npm project; `npm run package` works in a clean checkout
 #   - the packaging script writes an arm64 .zip into release/
-#   - signing is ad-hoc (no Apple Developer certificate); for Developer ID signing
-#     and notarization, replace the codesign step and add the required secrets
+#   - the packaging script ad-hoc signs the .app. This workflow only *verifies*
+#     the signature; if your packaging step does not sign, add
+#     `codesign --force --deep --sign - "<App>.app"` after packaging.
+#   - for Developer ID signing/notarization, add the certificate secrets and
+#     replace the verification step with a sign + notarytool flow
 name: macOS installer
 
 on:
@@ -102,7 +105,9 @@ jobs:
           mv "$RAW_NAME" "$ASSET_NAME"
           shasum -a 256 "$ASSET_NAME" > SHA256SUMS.txt
           cat SHA256SUMS.txt
-          # Unzip and verify the signature: upload only an app that actually opens
+          # Unzip and verify the signature: upload only an app that actually opens.
+          # ADAPT: this step verifies but does NOT sign; the packaging step must
+          # ad-hoc sign the bundle (codesign --force --deep --sign -) beforehand.
           rm -rf /tmp/app-verify
           ditto -x -k "$ASSET_NAME" /tmp/app-verify
           app_path="$(find /tmp/app-verify -maxdepth 2 -name '*.app' -print -quit)"
@@ -116,10 +121,10 @@ jobs:
       - name: Upload build artifact
         uses: actions/upload-artifact@v7
         with:
-          # ADAPT: artifact name and paths must match the actual output
+          # ADAPT: artifact name; the paths follow ASSET_NAME automatically
           name: macos-installer
           path: |
-            release/app-mac-arm64.zip
+            release/${{ env.ASSET_NAME }}
             release/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 30
@@ -154,6 +159,7 @@ jobs:
           } > release/RELEASE_NOTES.md
           cat release/RELEASE_NOTES.md
 
+      # ADAPT: replace the release title "App ..." below with the product's display name.
       - name: Publish GitHub Release
         if: env.IS_RELEASE == 'true'
         shell: bash
@@ -166,7 +172,7 @@ jobs:
             # previous attempt left a draft behind.
             echo "Release $RELEASE_TAG already exists (isDraft=${release_draft}); uploading assets"
             gh release upload "$RELEASE_TAG" \
-              release/app-mac-arm64.zip \
+              "release/$ASSET_NAME" \
               release/SHA256SUMS.txt \
               --clobber --repo "$GITHUB_REPOSITORY"
             if [ "$release_draft" = "true" ]; then
@@ -176,7 +182,7 @@ jobs:
             # gh release create with assets: draft -> upload -> publish, so a failed
             # upload never leaves a public empty release.
             gh release create "$RELEASE_TAG" \
-              release/app-mac-arm64.zip \
+              "release/$ASSET_NAME" \
               release/SHA256SUMS.txt \
               --repo "$GITHUB_REPOSITORY" \
               --title "App $RELEASE_TAG" \
@@ -192,7 +198,7 @@ jobs:
           {
             echo "## Installer built"
             echo
-            echo "- Asset: \`$ASSET_NAME\` ($(du -h release/app-mac-arm64.zip | cut -f1))"
+            echo "- Asset: \`$ASSET_NAME\` ($(du -h "release/$ASSET_NAME" | cut -f1))"
             echo "- Checksum: \`$(cat release/SHA256SUMS.txt)\`"
             if [ "$IS_RELEASE" = "true" ]; then
               echo "- Release: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$RELEASE_TAG"

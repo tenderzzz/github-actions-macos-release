@@ -57,8 +57,8 @@ Also read the packaging script for hardcoded local paths, signing identities, or
 
 ## Implementation
 
-1. Copy `assets/workflow-macos-package.yml` (relative to this skill's base directory) to the target repo's `.github/workflows/`, then change every `ADAPT` marker: package directory, raw zip name, published asset name (**ASCII, keep it stable**), Node version, test command, app bundle name.
-2. Keep this step order: checkout full history → print runner/toolchain → setup-node → version guard → `npm ci` → headless tests → package → unzip + `codesign --verify --deep --strict` → artifact upload → release notes → `gh` publish → job summary.
+1. Copy `assets/workflow-macos-package.yml` (relative to this skill's base directory) to the target repo's `.github/workflows/`, then change every `ADAPT` marker: package output directory, `RAW_NAME`/`ASSET_NAME` (the published name must be **ASCII and stable**), Node version, test command, packaging command, artifact name, release title and release-notes locale. The `.app` bundle name is discovered after unzip, so it needs no marker.
+2. Keep this step order: checkout full history → print runner/toolchain → setup-node → version guard → `npm ci` → headless tests → package → unzip + `codesign --verify --deep --strict` → artifact upload → release notes → `gh` publish → job summary. The template only *verifies* the signature; if the packaging script does not ad-hoc sign the app, add `codesign --force --deep --sign -` right after packaging.
 3. Publish with the runner's preinstalled `gh` CLI, not a third-party release action. `gh release create <tag> <files>` creates a draft, uploads assets, then publishes, so a failed upload never leaves a public empty release.
 4. Release notes must include: install steps, commit list since the previous tag, compare link, and how to verify the SHA-256. Add `--verify-tag` so an existing tag is required.
 5. Update docs: README section with the exact release commands, manual trigger, asset name; if the repo keeps a verification log, record the first real run's numbers.
@@ -66,9 +66,9 @@ Also read the packaging script for hardcoded local paths, signing identities, or
 
 ## Validation (not done until this passes)
 
-1. **Lint the bundle.** `python3 scripts/validate.py` from this skill's base directory; then `actionlint -shellcheck "$(command -v shellcheck)" <template>`. If actionlint is missing, download the official release binary into `/tmp`; do not modify the system.
-2. **Simulate a clean CI checkout.** `git archive HEAD | tar -x -C /tmp/ci-run`, run `npm ci && npm test && npm run package` there with the same Node major as the workflow. This catches packaging that depends on uncommitted files.
-3. **Mock the publish branches.** A fake `gh` script exercises create / re-upload published / repair draft, without touching a real repository.
+1. **Lint the bundle.** From this skill's base directory run `python3 scripts/validate.py` and `python3 scripts/mock-release-branches.py`; then `actionlint -shellcheck "$(command -v shellcheck)" <template>`. If actionlint is missing, download the official release binary into `/tmp`; do not modify the system.
+2. **Simulate a clean CI checkout.** `rm -rf /tmp/ci-run && mkdir -p /tmp/ci-run && git archive HEAD | tar -x -C /tmp/ci-run`, then run `npm ci && npm test && npm run package` there with the same Node major as the workflow. This catches packaging that depends on uncommitted files.
+3. **Mock the publish branches.** `python3 scripts/mock-release-branches.py` extracts the template's publish step, runs it against a fake `gh`, and asserts create / re-upload published / repair draft without touching a real repository. (This is also what CI runs, so the claim is enforced.)
 4. **Run a real manual build.** After pushing to the default branch, `gh workflow run <file> --ref main` with the tag input empty. Check step conclusions (build steps success, release steps skipped), artifact size, and that existing Releases are untouched.
 5. **Watch the first real tag release.** `gh run watch`, then verify Release assets, `SHA256SUMS.txt` against the downloaded zip, and that previous releases are unchanged.
 
@@ -97,6 +97,9 @@ Also read the packaging script for hardcoded local paths, signing identities, or
 ## Bundled resources
 
 - `assets/workflow-macos-package.yml` — copy-ready workflow template with `ADAPT` markers.
+- `scripts/validate.py` — bundle validator: frontmatter, links, shell syntax, template guardrails, bash 3.2 pitfall.
+- `scripts/mock-release-branches.py` — runs the template's publish step against a fake `gh` and asserts all three branches.
 - `references/checklist.md` — pre-flight, first-run and troubleshooting checklists.
 - `references/stacks.md` — electron-builder, Tauri and custom-script adaptations.
 - `references/environment-facts.md` — verified GitHub/Electron facts (dated) plus re-verification commands.
+- `.github/workflows/ci.yml` — runs both scripts plus actionlint/shellcheck on every push and PR.

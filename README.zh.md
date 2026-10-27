@@ -51,7 +51,7 @@ git push origin main
 gh workflow run macos-package.yml --ref main   # tag 留空：只出 artifact
 ```
 
-正式发版：改版本 → 提交 → 只推这一条 tag：
+正式发版：改版本 → 提交 → 推 `main` 和这一条 tag：
 
 ```sh
 npm version 1.2.3 --no-git-tag-version   # 同时同步 package-lock.json
@@ -68,8 +68,8 @@ git push origin main v1.2.3
 | --- | --- |
 | 版本校验 | tag 必须等于 `v` + `package.json` 版本，否则立即失败 |
 | `npm ci` + 测试 | 装依赖、跑 headless 测试 |
-| 打包 | 执行项目自己的打包命令（默认 ad-hoc 签名） |
-| 校验 | 解压、找到 `.app`、`codesign --verify --deep --strict` |
+| 打包 | 执行项目自己的打包命令；打包脚本必须产出安装包并给 app 做 ad-hoc 签名 |
+| 校验 | 解压、找到 `.app`、`codesign --verify --deep --strict`（只验证，不签名） |
 | 上传 artifact | 手动构建产物保留 30 天 |
 | 发布 | `gh release create`（draft → 上传 → 发布），或已存在时覆盖资产并修复 draft |
 | 运行摘要 | 产物大小、SHA-256、Release/运行链接 |
@@ -84,14 +84,15 @@ git push origin main v1.2.3
 | `references/stacks.md` | electron-builder、Tauri、自定义脚本的适配方式 |
 | `references/environment-facts.md` | 带日期的 GitHub/Electron 事实 + 重新核对命令 |
 | `scripts/validate.py` | skill bundle 校验器（frontmatter、链接、shell 语法、模板护栏、bash 3.2 坑） |
-| `.github/workflows/ci.yml` | CI：每次提交跑校验器 + actionlint/shellcheck |
+| `scripts/mock-release-branches.py` | 用假 `gh` 跑模板的发布步骤，断言三条分支行为 |
+| `.github/workflows/ci.yml` | CI：两个脚本 + actionlint/shellcheck，每次 push/PR 都跑 |
 
 ## 要求与限制
 
 - **Runner**：GitHub 托管 `macos-latest`（截至 2026-10 为 macOS 26 arm64）。需要固定就写 `macos-26`。
 - **Node**：模板用 Node 24，按项目 `engines` 改。
 - **架构**：默认只出 Apple Silicon（arm64）包；Intel/通用包需要 matrix 或 universal 构建，见 `references/stacks.md`。
-- **签名**：默认 ad-hoc、未公证，首次打开可能需右键「打开」。Developer ID 签名+公证不在模板范围内（需要证书 secrets 并替换签名步骤）。
+- **签名**：打包脚本必须给 app 做 ad-hoc 签名（`codesign --force --deep --sign -`），模板只负责验证，缺签名会直接失败。未公证，首次打开可能需右键「打开」。Developer ID 签名+公证不在模板范围内（需要证书 secrets 并在验证前加签名步骤）。
 - **打包方式**：模板假设 npm 项目、打包脚本产出 `release/<name>-mac-arm64.zip`；其它技术栈按 `references/stacks.md` 适配，并且一定要先在本地跑一遍确认真实产物路径。
 - **环境事实会过期**：action 主版本、runner 镜像、Electron 行为都在变。`references/environment-facts.md` 记录了 2026-10-27 核对的事实与复核命令。
 
@@ -101,7 +102,8 @@ git push origin main v1.2.3
 
 ```sh
 python3 scripts/validate.py
-# 以及用 actionlint + shellcheck 检查 assets/workflow-macos-package.yml（CI 会跑）
+python3 scripts/mock-release-branches.py
+# 以及用 actionlint + shellcheck 检查 assets/workflow-macos-package.yml（CI 会跑全部）
 ```
 
 保持 skill bundle 有效：frontmatter 的 `name`/`description` 齐全、相对链接可用、模板 lint 通过、不要出现「`$var` 后紧跟非 ASCII 字符」的写法（macOS bash 3.2 的坑）。

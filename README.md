@@ -51,7 +51,7 @@ git push origin main
 gh workflow run macos-package.yml --ref main   # tag input empty: artifact only
 ```
 
-To release, bump the version, commit, and push only the new tag:
+To release, bump the version, commit, then push `main` plus only the new tag:
 
 ```sh
 npm version 1.2.3 --no-git-tag-version   # keeps package-lock.json in sync
@@ -68,8 +68,8 @@ The workflow then publishes a GitHub Release with the installer, `SHA256SUMS.txt
 | --- | --- |
 | Version guard | Fail fast unless `tag == v${package.json.version}` |
 | `npm ci` + tests | Dependency install and headless test suite |
-| Package | Run the project's packaging command (ad-hoc signed by default) |
-| Verify | Unzip, locate the `.app`, `codesign --verify --deep --strict` |
+| Package | Run the project's packaging command; it must produce the installer and ad-hoc sign the app |
+| Verify | Unzip, locate the `.app`, `codesign --verify --deep --strict` (verifies only, never signs) |
 | Upload artifact | Keep a 30-day scratch build for manual runs |
 | Release | `gh release create` (draft → upload → publish) or asset re-upload with draft repair |
 | Job summary | Asset size, SHA-256, release/run links |
@@ -84,14 +84,15 @@ The workflow then publishes a GitHub Release with the installer, `SHA256SUMS.txt
 | `references/stacks.md` | Adaptations for electron-builder, Tauri and custom scripts |
 | `references/environment-facts.md` | Dated GitHub/Electron facts + re-verification commands |
 | `scripts/validate.py` | Bundle validator (frontmatter, links, shell syntax, template guardrails, bash 3.2 pitfall) |
-| `.github/workflows/ci.yml` | CI: validator + actionlint/shellcheck on every workflow |
+| `scripts/mock-release-branches.py` | Runs the template's publish step against a fake `gh` and asserts all three branches |
+| `.github/workflows/ci.yml` | CI: both scripts plus actionlint/shellcheck on every push and PR |
 
 ## Requirements and limits
 
 - **Runner:** GitHub-hosted `macos-latest` (macOS 26 arm64 as of 2026-10). Pin `macos-26` if you need a fixed image.
 - **Node:** template uses Node 24; change it to match the project's `engines`.
 - **Architecture:** the default template produces an Apple Silicon (arm64) installer. Intel/universal builds need a matrix or a universal build — see `references/stacks.md`.
-- **Signing:** ad-hoc by default; not notarized, so first launch may require right-click → Open. Developer ID signing/notarization is out of scope for the template (add certificate secrets and replace the codesign step).
+- **Signing:** the packaging script must ad-hoc sign the app (`codesign --force --deep --sign -`); the template only verifies the signature and will fail if it is missing. Builds are not notarized, so first launch may require right-click → Open. Developer ID signing/notarization is out of scope for the template (add certificate secrets and a signing step before verification).
 - **Packaging:** the template assumes an npm project whose packaging script writes `release/<name>-mac-arm64.zip`. Other stacks are supported via `references/stacks.md`; always confirm real output paths by running the packaging command locally.
 - **Facts expire:** action majors, runner images and Electron behavior change. `references/environment-facts.md` records what was verified on 2026-10-27 and how to re-check.
 
@@ -101,7 +102,8 @@ Issues and pull requests are welcome. Before opening a PR:
 
 ```sh
 python3 scripts/validate.py
-# plus actionlint + shellcheck on assets/workflow-macos-package.yml (CI runs both)
+python3 scripts/mock-release-branches.py
+# plus actionlint + shellcheck on assets/workflow-macos-package.yml (CI runs all of these)
 ```
 
 Keep the skill bundle valid: frontmatter `name`/`description` present, relative links working, template lint-clean, and no `$var` immediately followed by non-ASCII bytes (the macOS bash 3.2 trap).
