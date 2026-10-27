@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate skill bundle
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Validate skill files, links and shell syntax
+        run: python3 scripts/validate.py
+
+      - name: Ensure shellcheck
+        run: |
+          command -v shellcheck >/dev/null || {
+            sudo apt-get update
+            sudo apt-get install -y shellcheck
+          }
+          shellcheck --version
+
+      - name: Install actionlint
+        env:
+          ACTIONLINT_VERSION: 1.7.12
+          ACTIONLINT_URL: https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/download-actionlint.bash "$ACTIONLINT_URL"
+          bash /tmp/download-actionlint.bash "$ACTIONLINT_VERSION"
+          ./actionlint --version
+
+      - name: Lint workflow template
+        run: |
+          set -euo pipefail
+          ./actionlint -shellcheck "$(command -v shellcheck)" assets/workflow-macos-package.yml
+
+      - name: Lint repository workflows
+        run: |
+          set -euo pipefail
+          ./actionlint -shellcheck "$(command -v shellcheck)" .github/workflows/*.yml

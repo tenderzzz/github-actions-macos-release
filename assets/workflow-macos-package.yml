@@ -1,0 +1,203 @@
+# Template: build and publish a macOS desktop-app installer with GitHub Actions.
+#
+# Usage: copy this file to the target repo as .github/workflows/macos-package.yml
+# and resolve every # ADAPT marker.
+#
+# Assumptions (check before use):
+#   - npm project; `npm run package` works in a clean checkout
+#   - the packaging script writes an arm64 .zip into release/
+#   - signing is ad-hoc (no Apple Developer certificate); for Developer ID signing
+#     and notarization, replace the codesign step and add the required secrets
+name: macOS installer
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing release tag to upload to (e.g. v1.2.3). Leave empty to build only.'
+        required: false
+        default: ''
+        type: string
+
+# Creating a release and uploading assets needs write access. This overrides a
+# read-only repository default; no PAT or additional secret is required.
+permissions:
+  contents: write
+
+# Group on the target tag, not github.ref: a tag push (refs/tags/vX) and a manual
+# re-run from main (refs/heads/main) would otherwise write the same release concurrently.
+concurrency:
+  group: macos-package-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    name: Build and publish macOS app
+    runs-on: macos-latest # macOS 26 arm64 as of 2026-10; pin macos-26 if you need a fixed image
+    timeout-minutes: 45
+    env:
+      RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+      IS_RELEASE: ${{ github.event_name == 'push' || github.event.inputs.tag != '' }}
+      # ADAPT: zip name written by the packaging script -> published asset name
+      # (keep the published name ASCII and stable; README download links depend on it)
+      RAW_NAME: app-mac-arm64.zip
+      ASSET_NAME: app-mac-arm64.zip
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          # Build the requested tag when provided, otherwise the triggering ref
+          ref: ${{ github.event.inputs.tag || github.ref }}
+          # Release notes use `git describe` to find the previous tag, so fetch all history
+          fetch-depth: 0
+          # Keep the token out of the local git config; the publish step uses GH_TOKEN
+          persist-credentials: false
+
+      - name: Show runner and toolchain
+        run: |
+          sw_vers
+          uname -m
+          node --version
+          npm --version
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24' # ADAPT: match package.json engines / README requirements
+          cache: npm
+
+      # Check the version before installing dependencies: a tag/package.json mismatch
+      # fails in seconds instead of after a full build.
+      - name: Verify tag matches package.json version
+        if: env.IS_RELEASE == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          pkg_version="$(node -p "require('./package.json').version")"
+          if [ "$RELEASE_TAG" != "v$pkg_version" ]; then
+            echo "::error::Tag $RELEASE_TAG does not match package.json version v$pkg_version. Bump package.json first, commit, then tag again."
+            exit 1
+          fi
+          echo "Version check passed: $RELEASE_TAG"
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Run tests
+        run: npm test # ADAPT: remove this step if the repo has no tests; never run GUI tests here
+
+      - name: Build and package
+        run: npm run package # ADAPT: the real packaging command; output must land in release/
+
+      - name: Verify package and normalize asset names
+        shell: bash
+        run: |
+          set -euo pipefail
+          # macOS system bash 3.2 under UTF-8 locales may merge the byte right after
+          # $var into the variable name. Always write ${var} before non-ASCII text.
+          cd release # ADAPT: packaging output directory
+          mv "$RAW_NAME" "$ASSET_NAME"
+          shasum -a 256 "$ASSET_NAME" > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          # Unzip and verify the signature: upload only an app that actually opens
+          rm -rf /tmp/app-verify
+          ditto -x -k "$ASSET_NAME" /tmp/app-verify
+          app_path="$(find /tmp/app-verify -maxdepth 2 -name '*.app' -print -quit)"
+          if [ -z "$app_path" ]; then
+            echo "::error::No .app bundle found after unzipping; check the packaging output layout."
+            exit 1
+          fi
+          codesign --verify --deep --strict "$app_path"
+          echo "Signature verified after unzip"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v7
+        with:
+          # ADAPT: artifact name and paths must match the actual output
+          name: macos-installer
+          path: |
+            release/app-mac-arm64.zip
+            release/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0 # already a zip; do not compress again
+
+      - name: Generate release notes
+        if: env.IS_RELEASE == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # ADAPT: localize the note text if the project's users do not read English
+          prev_tag="$(git describe --tags --abbrev=0 "$RELEASE_TAG^" 2>/dev/null || true)"
+          {
+            echo "Built by GitHub Actions on a GitHub-hosted macOS runner ($(uname -m)). Ad-hoc signed, not notarized."
+            echo
+            echo "### Commits in this release"
+            echo
+            if [ -n "$prev_tag" ]; then
+              git log --pretty='- %s' -n 30 "$prev_tag..$RELEASE_TAG"
+              echo
+              echo "**Full changelog**: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/compare/$prev_tag...$RELEASE_TAG"
+            else
+              git log --pretty='- %s' -n 30 "$RELEASE_TAG"
+            fi
+            echo
+            echo "### Install"
+            echo
+            echo "1. Download \`$ASSET_NAME\` and unzip it."
+            echo "2. Move the \`.app\` into /Applications or anywhere you like."
+            echo "3. If Gatekeeper blocks the first launch, right-click the app and choose Open."
+            echo "4. Verify with \`shasum -a 256 $ASSET_NAME\` against \`SHA256SUMS.txt\`."
+          } > release/RELEASE_NOTES.md
+          cat release/RELEASE_NOTES.md
+
+      - name: Publish GitHub Release
+        if: env.IS_RELEASE == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if release_draft="$(gh release view "$RELEASE_TAG" --json isDraft -q .isDraft --repo "$GITHUB_REPOSITORY" 2>/dev/null)"; then
+            # Exists (manual re-run): replace same-named assets; only republish if a
+            # previous attempt left a draft behind.
+            echo "Release $RELEASE_TAG already exists (isDraft=${release_draft}); uploading assets"
+            gh release upload "$RELEASE_TAG" \
+              release/app-mac-arm64.zip \
+              release/SHA256SUMS.txt \
+              --clobber --repo "$GITHUB_REPOSITORY"
+            if [ "$release_draft" = "true" ]; then
+              gh release edit "$RELEASE_TAG" --draft=false --repo "$GITHUB_REPOSITORY" >/dev/null
+            fi
+          else
+            # gh release create with assets: draft -> upload -> publish, so a failed
+            # upload never leaves a public empty release.
+            gh release create "$RELEASE_TAG" \
+              release/app-mac-arm64.zip \
+              release/SHA256SUMS.txt \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "App $RELEASE_TAG" \
+              --notes-file release/RELEASE_NOTES.md \
+              --verify-tag
+          fi
+
+      - name: Write job summary
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "## Installer built"
+            echo
+            echo "- Asset: \`$ASSET_NAME\` ($(du -h release/app-mac-arm64.zip | cut -f1))"
+            echo "- Checksum: \`$(cat release/SHA256SUMS.txt)\`"
+            if [ "$IS_RELEASE" = "true" ]; then
+              echo "- Release: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$RELEASE_TAG"
+            else
+              echo "- Build only: download the artifact from this run (kept for 30 days)."
+            fi
+            echo "- Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          } >> "$GITHUB_STEP_SUMMARY"
