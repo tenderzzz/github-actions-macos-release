@@ -40,10 +40,12 @@ jobs:
         run: |
           set -euo pipefail
           base="https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}"
-          curl -fsSL -o /tmp/actionlint.tar.gz "${base}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          asset="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          curl -fsSL -o "/tmp/${asset}" "${base}/${asset}"
           curl -fsSL -o /tmp/actionlint_checksums.txt "${base}/actionlint_${ACTIONLINT_VERSION}_checksums.txt"
-          (cd /tmp && grep "actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz$" actionlint_checksums.txt | sha256sum -c -)
-          tar -xzf /tmp/actionlint.tar.gz -C /tmp actionlint
+          # sha256sum -c resolves the filename recorded in the checksum file, so keep the asset name.
+          (cd /tmp && grep " ${asset}$" actionlint_checksums.txt | sha256sum -c -)
+          tar -xzf "/tmp/${asset}" -C /tmp actionlint
           /tmp/actionlint --version
 
       - name: Lint workflow template
