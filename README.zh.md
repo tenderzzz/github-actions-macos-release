@@ -7,12 +7,12 @@
 
 [English](README.md) | **中文**
 
-这个仓库把一条已经真实跑通的发布流水线打包成两种复用形式：
+这个仓库把一条在真实项目上验证过的发布流水线打包成两种复用形式：
 
 1. **DSH skill**（DeepSeek Harness 的技能）：agent 在处理 macOS 发布工作流前会加载的作业手册，包含侦察清单、设计决策、验证流程、已知坑和模板。
 2. **独立的工作流模板**：`assets/workflow-macos-package.yml` 可以直接复制到任意仓库的 `.github/workflows/`，不用 DSH 也能用。
 
-流水线在一个真实项目上做过端到端验证：Electron 45 应用，推 tag 后在 GitHub 托管的 macOS runner 上完成 80/80 测试、约 71 秒跑完、产出 125 MB 安装包。**不需要 Apple 开发者证书，也不需要配置任何仓库 secret**——构建使用 ad-hoc 签名，首次打开可能需要在 Finder 里右键「打开」。
+在一个真实的 Electron 45 应用上，GitHub Actions 手动运行（macOS 26 arm64 runner）完成了 80/80 测试、打包、签名校验，并上传了 125 MB 的 artifact，耗时约 71 秒。同一工作流已配置为 tag 触发发布；`gh release` 发布分支目前只用 mock 的 `gh` 在本地验证过，等待首次真实 tag 发版。**不需要 Apple 开发者证书，也不需要配置任何仓库 secret**——构建使用 ad-hoc 签名，首次打开可能需要在 Finder 里右键「打开」。
 
 ## 为什么值得用
 

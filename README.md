@@ -7,12 +7,12 @@
 
 **English** | [中文](README.zh.md)
 
-This repository packages a verified release pipeline in two reusable forms:
+The pipeline was verified on a real project, and this repository packages it in two reusable forms:
 
 1. **A [DeepSeek Harness](https://github.com/deepseek-ai) (DSH) skill** — an instruction bundle that coding agents load before touching a macOS release workflow. It contains the recon checklist, design decisions, validation protocol, known pitfalls, and this template.
 2. **A standalone workflow template** — `assets/workflow-macos-package.yml` can be copied into any repo's `.github/workflows/` even if you never use DSH.
 
-The pipeline was verified end-to-end on a real project: an Electron 45 app published from a tag push on a GitHub-hosted macOS runner (80/80 tests, ~71 s run, 125 MB installer asset). No Apple Developer certificate or repository secret is required — builds are ad-hoc signed, and the template only warns users to right-click → Open on first launch.
+On a real Electron 45 app, a manual GitHub Actions run on a macOS 26 arm64 runner passed 80/80 tests, built the installer, verified its signature, and uploaded a 125 MB artifact in ~71 s. The same workflow is wired for tag-triggered publishing; its `gh release` publish branch has been exercised locally with a mocked `gh` and awaits its first real tag release. No Apple Developer certificate or repository secret is required — builds are ad-hoc signed, and users may need right-click → Open on first launch.
 
 ## Why use it
 

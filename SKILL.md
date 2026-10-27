@@ -6,7 +6,7 @@ whenToUse: Use when a desktop-app repo (Electron, Tauri, native macOS) needs CI 
 
 # macOS installer releases with GitHub Actions
 
-A playbook for AI coding agents: turn "build a macOS installer on GitHub's macOS runners and upload it" into a reusable, re-runnable, mistake-proof pipeline. **This skill writes and verifies the workflow; GitHub Actions does the building and uploading.** A verified end-to-end instance of the bundled template: [tenderzzz/body-journal](https://github.com/tenderzzz/body-journal) (Electron 45, tag-triggered release, 80/80 tests, ~71 s run, 125 MB asset).
+A playbook for AI coding agents: turn "build a macOS installer on GitHub's macOS runners and upload it" into a reusable, re-runnable, mistake-proof pipeline. **This skill writes and verifies the workflow; GitHub Actions does the building and uploading.** A real-world instance of the bundled template: [tenderzzz/body-journal](https://github.com/tenderzzz/body-journal) (Electron 45; a manual run on a macOS 26 arm64 runner passed 80/80 tests, built and signature-verified the installer and uploaded a 125 MB artifact in ~71 s; its tag→release publish branch awaited its first real tag release at the time of writing).
 
 ## Use this skill when
 

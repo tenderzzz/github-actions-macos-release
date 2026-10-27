@@ -39,7 +39,7 @@ gh api repos/{owner}/{repo}/actions/permissions/workflow
 | Codesign/zip | Ad-hoc `codesign --force --deep --sign -` needs no keychain; `.app` bundles must be zipped with `ditto -c -k --keepParent` | Apple codesign docs; verified run |
 | Billing | Standard runners are free for public repos; macOS minutes are billed 10× for private repos | GitHub billing docs |
 
-Measured reference run (public repo, tag→release pipeline verified end-to-end): GitHub-hosted `macos-26-arm64`, Node 24.22.1, npm 11.19.1, 80/80 tests, packaging + signature verification + 125 MB artifact upload in **71 s** wall time. Instance: [tenderzzz/body-journal](https://github.com/tenderzzz/body-journal) — [run 40465779354](https://github.com/tenderzzz/body-journal/actions/runs/40465779354).
+Measured reference run (public repo; the **build/test/package/artifact path** was exercised by a manual `workflow_dispatch` run — the `gh release` publish branch has so far only been validated locally with a mocked `gh`): GitHub-hosted `macos-26-arm64`, Node 24.22.1, npm 11.19.1, 80/80 tests, packaging + signature verification + 125 MB artifact upload in **71 s** wall time. Instance: [tenderzzz/body-journal](https://github.com/tenderzzz/body-journal) — [run 40465779354](https://github.com/tenderzzz/body-journal/actions/runs/40465779354) (`workflow_dispatch`, `tag` empty).
 
 ## Official links
 
